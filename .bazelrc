@@ -1,0 +1,72 @@
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+common --incompatible_strict_action_env
+common --platforms=//:linux_x86_64_gnu_2_34
+common --host_platform=//:linux_x86_64_gnu_2_34
+
+# Optimization level for `-c fastbuild` (patches/fastbuild_compile_flags.patch).
+common --@llvm//config:fastbuild_optimization_mode=O1
+
+# Default for Bazel 8.x, opt-in for Bazel 9.x. This causes the header
+# shadowing bug to surface in 9.x as well.
+common --features=system_include_paths
+
+# Surface only the header-shadowing errors.
+common --per_file_copt=+external/.*@-Wno-everything
+common --host_per_file_copt=+external/.*@-Wno-everything
+
+# rules_cuda: compile CUDA with the @llvm clang + libc++.
+common --repo_env=CUDA_COMPILER_USE_CC_TOOLCHAIN=true
+common --@rules_cuda//cuda:compiler=clang
+common --@rules_cuda//cuda:archs=sm_80
+common --@rules_cuda//cuda:copts=-stdlib=libc++
+common --@rules_cuda//cuda:copts=-D_ALLOW_UNSUPPORTED_LIBCPP
+
+# Address sanitizer
+common:asan --strip=never
+common:asan --@llvm//config:asan
+common:asan --copt -O0
+common:asan --copt -g
+common:asan --copt -fno-omit-frame-pointer
+test:asan --test_tag_filters=-noasan
+
+# Memory sanitizer
+common:msan --strip=never
+common:msan --@llvm//config:msan
+common:msan --copt -O0
+common:msan --copt -g
+common:msan --copt -fno-omit-frame-pointer
+test:msan --test_tag_filters=-nomsan
+
+# Thread sanitizer
+common:tsan --strip=never
+common:tsan --@llvm//config:tsan
+common:tsan --copt -O0
+common:tsan --copt -g
+common:tsan --copt -fno-omit-frame-pointer
+test:tsan --test_tag_filters=-notsan
+
+# Undefined Behavior sanitizer
+common:ubsan --strip=never
+common:ubsan --@llvm//config:ubsan
+common:ubsan --copt -O0
+common:ubsan --copt -g
+common:ubsan --copt -fno-omit-frame-pointer
+test:ubsan --test_tag_filters=-noubsan
+
+# Real-time sanitizer
+common:rtsan --strip=never
+common:rtsan --@llvm//config:rtsan
+common:rtsan --copt -O0
+common:rtsan --copt -g
+common:rtsan --copt -fno-omit-frame-pointer
+test:rtsan --test_tag_filters=-nortsan
+
+# Fuzzing
+common:fuzztest --config=asan
+common:fuzztest --config=ubsan
+common:fuzztest --dynamic_mode=off
+common:fuzztest --copt=-fsanitize-coverage=inline-8bit-counters,trace-cmp,pc-table
+
+# Foreign build systems (CMake, cc-rs) compile with absolute paths; keep them
+# out of sanitizer metadata. Opt-in, see patches/sanitizer_strip_foreign_source_paths.patch.
+common:fuzztest --@llvm//config:sanitizer_strip_foreign_source_paths

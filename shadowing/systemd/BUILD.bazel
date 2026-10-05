@@ -1,0 +1,11 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+# @systemd//:libudev_objects puts `src/include/override` and `src/include/uapi`
+# in `includes` (-isystem). Without header_search_paths.patch, the toolchain's
+# glibc and kernel_headers -isystem directories precede target -isystem
+# directories, shadowing systemd's override and UAPI headers.
+cc_library(
+    name = "example",
+    srcs = ["example.c"],
+    deps = ["@systemd//:libudev"],
+)

@@ -1,0 +1,72 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
+load(":defs.bzl", "cargo_build_script_cc_object", "foreign_cc_compiler_check")
+
+# 1. cyclonedds / rules_foreign_cc  (patches/asan_runtime.patch)
+#
+# CMake's compiler sanity check is a plain C compile+link using the CFLAGS and
+# LDFLAGS rules_foreign_cc extracts from the toolchain. Under
+# `--config asan` the ASan runtime built by @llvm must not reference C++
+# EH/RTTI symbols, or this C link fails and CMake refuses to configure.
+#
+#   bazel build --config asan //fuzzing:foreign_cc_compiler_check
+foreign_cc_compiler_check(
+    name = "foreign_cc_compiler_check",
+    srcs = ["foreign_cc_compiler_check.c"],
+)
+
+# 2. ring / cargo_build_script  (patches/sanitizer_strip_foreign_source_paths.patch)
+#
+# cc-rs compiles C with absolute paths and the toolchain's CFLAGS. UBSan source
+# locations and ASan global metadata must not embed those paths, or rules_rust
+# rejects the rlib ("embeds the absolute working directory").
+#
+#   bazel test --config ubsan --@llvm//config:sanitizer_strip_foreign_source_paths //fuzzing:cargo_build_script_test
+#   bazel test --config asan  --@llvm//config:sanitizer_strip_foreign_source_paths //fuzzing:cargo_build_script_test
+cargo_build_script_cc_object(
+    name = "cargo_build_script_cc_object",
+    srcs = ["cargo_build_script.c"],
+)
+
+cc_test(
+    name = "cargo_build_script_test",
+    srcs = [
+        "cargo_build_script_test.c",
+        ":cargo_build_script_cc_object",
+    ],
+    linkopts = ["-ldl"],
+)
+
+# 3. FuzzTest coverage counters  (patches/stage0_object_reset.patch)
+#
+# FuzzTest instruments with
+# --copt=-fsanitize-coverage=inline-8bit-counters,trace-cmp,pc-table.
+# crtbegin.o/crtend.o must not pick up that --copt, otherwise every shared
+# library in the process registers its own (tiny) counter range before the
+# executable does and FuzzTest fuzzes without coverage feedback.
+#
+#   bazel test --config fuzztest //fuzzing:fuzztest_coverage_test
+#
+# `--config fuzztest` in .bazelrc mirrors the nightly workflow's
+# `--config=ubsan --config=fuzztest` (ASan + UBSan + static linking + sancov),
+# so the two targets above can be exercised with it as well:
+#
+#   bazel build --config fuzztest //fuzzing:foreign_cc_compiler_check
+#   bazel test  --config fuzztest //fuzzing:cargo_build_script_test
+cc_binary(
+    name = "libfuzztest_coverage_dep.so",
+    srcs = ["fuzztest_coverage_dep.cc"],
+    # Not instrumented (same opt-out the nightly applies via --per_file_copt
+    # to the fuzzing framework); the only coverage this .so could carry comes
+    # from the toolchain's crtbeginS.o/crtendS.o.
+    copts = ["-fsanitize-coverage=0"],
+    linkshared = True,
+)
+
+cc_test(
+    name = "fuzztest_coverage_test",
+    srcs = [
+        "fuzztest_coverage_test.cc",
+        ":libfuzztest_coverage_dep.so",
+    ],
+    linkopts = ["-ldl"],
+)

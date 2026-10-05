@@ -1,0 +1,11 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+# @osqp//:osqp exports `includes = ["include"]` (containing osqp's bundled
+# include/error.h). Without header_search_paths.patch, the toolchain's glibc
+# -isystem precedes target -isystem directories, so #include "error.h" resolves
+# to glibc's <error.h> instead of osqp's include/error.h.
+cc_library(
+    name = "example",
+    srcs = ["example.c"],
+    deps = ["@osqp"],
+)

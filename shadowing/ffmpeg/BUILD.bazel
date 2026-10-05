@@ -1,0 +1,13 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+# Without header_search_paths.patch, @llvm passes -resource-dir=<compile_dir> in
+# c_flags and -resource-dir=<link_dir> (which lacks builtin headers) in
+# c_link_flags. When rules_cc_autoconf runs AC_CHECK_LIB (combining c_flags and
+# c_link_flags in one clang invocation), the link -resource-dir overrides the
+# compile -resource-dir, causing glibc's <limits.h> (#include_next <limits.h>)
+# to fail and breaking HAVE_PTHREADS detection in @ffmpeg//:avutil.
+cc_library(
+    name = "example",
+    srcs = ["example.c"],
+    deps = ["@ffmpeg//:avutil"],
+)
